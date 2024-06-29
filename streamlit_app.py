@@ -1,18 +1,14 @@
 import streamlit as st
-import os
 from pymongo import MongoClient
-from bson.binary import Binary
 from openai import OpenAI
 import fitz  # PyMuPDF
 import docx
-import json
 from datetime import datetime
 
-st.set_page_config(page_title="Client Checklist Viewer", page_icon=":clipboard:")
+st.set_page_config(page_title="Klient Sjekkliste Visning", page_icon=":clipboard:")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
 
 MONGO_URI = st.secrets["mongo_uri"]
 client = MongoClient(MONGO_URI)
@@ -21,10 +17,10 @@ collection = db["checklist"]
 client_knowledge = db["client_knowledge"]
 client_submissions = db["client_submissions"]
 
-st.title("Smart Checklist Bot")
+st.title("Smart Sjekkliste Bot")
 
 # Client input
-client_id = st.text_input("Enter your Client ID:")
+client_id = st.text_input("Skriv inn din Klient ID:")
 
 if client_id:
     # Find checklists assigned to the client
@@ -33,9 +29,9 @@ if client_id:
     )
 
     if assigned_checklists:
-        st.sidebar.title("Assigned Checklists")
+        st.sidebar.title("Tildelte Sjekklister")
         checklist_titles = [checklist["filename"] for checklist in assigned_checklists]
-        selected_checklist = st.sidebar.radio("Select a checklist", checklist_titles)
+        selected_checklist = st.sidebar.radio("Velg en sjekkliste", checklist_titles)
 
         selected_content = None
         for checklist in assigned_checklists:
@@ -44,20 +40,20 @@ if client_id:
                 break
 
         if selected_content:
-            with st.expander("Checklist Content", expanded=False):
+            with st.expander("Sjekkliste Innhold", expanded=False):
                 st.text_area(
-                    "File Content", selected_content, height=500, disabled=True
+                    "Fil Innhold", selected_content, height=500, disabled=True
                 )
     else:
-        st.warning("No checklists assigned to this client ID.")
+        st.warning("Ingen sjekklister tildelt denne klient IDen.")
 else:
-    st.text("Please enter your client ID to view assigned checklists.")
+    st.text("Vennligst skriv inn din klient ID for å se tildelte sjekklister.")
 
 # Upload client knowledge documents
 st.sidebar.markdown("---")
-st.sidebar.title("Upload Knowledge Documents")
+st.sidebar.title("Last opp Kunnskapsdokumenter")
 uploaded_file = st.sidebar.file_uploader(
-    "Upload a document (PDF or DOC)", type=["pdf", "txt", "docx"]
+    "Last opp et dokument (PDF eller DOC)", type=["pdf", "txt", "docx"]
 )
 
 if uploaded_file and client_id:
@@ -66,7 +62,7 @@ if uploaded_file and client_id:
     # Check for duplicate filenames for the same client
     if client_knowledge.find_one({"client_id": client_id, "filename": file_name}):
         st.sidebar.warning(
-            "A file with this name already exists for this client. Please rename your file and try again."
+            "En fil med dette navnet finnes allerede for denne klienten. Vennligst gi filen et annet navn og prøv igjen."
         )
     else:
         file_content = uploaded_file.read()
@@ -86,27 +82,25 @@ if uploaded_file and client_id:
         client_knowledge.insert_one(
             {"client_id": client_id, "filename": file_name, "content": content}
         )
-        st.sidebar.success(f"File '{file_name}' uploaded successfully!")
-
+        st.sidebar.success(f"Fil '{file_name}' lastet opp med suksess!")
 
 # Display client knowledge documents
 if client_id:
     client_docs = list(client_knowledge.find({"client_id": client_id}))
 
     if client_docs:
-        st.sidebar.title("Client Knowledgebase")
+        st.sidebar.title("Klient Kunnskapsbase")
         for doc in client_docs:
             with st.sidebar:
                 with st.container(border=True):
                     st.markdown(f"**{doc['filename']}**")
     else:
-        st.sidebar.info("No knowledge documents uploaded for this client ID.")
-
+        st.sidebar.info("Ingen kunnskapsdokumenter lastet opp for denne klient IDen.")
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
-if prompt := st.chat_input("Hi, lets start solving!"):
+if prompt := st.chat_input("Hei, la oss starte med å løse!"):
     with st.chat_message("user"):
         st.markdown(prompt)
         # Add user message to chat history
@@ -114,38 +108,37 @@ if prompt := st.chat_input("Hi, lets start solving!"):
     client = OpenAI(api_key=st.secrets["openai_api_key"])
     checklist_content = selected_content
     prompty = f"""
-        You are having a conversation with a client who has to fill a checklist for a task.
-        You are assisting the client to fill the checklist.
-        You have been provided the checklist and the conversation history and the user's latest message.
-        The client may also have uploaded documents that may be helpful in filling the checklist, If they have, they would be provided to you.
-        This set of documents may or may not be sufficient to fill the checklist.
-        But its always good to have more details irrespective of the documents.
-        You will respond to the user in such a way that the connversation leads to filling the checklist.
-        You will only respond witht the reply to the user, add no other information.
-        Your reply should be in coherence with the conversation history and the checklist.
+        Du har en samtale med en klient som må fylle ut en sjekkliste for en oppgave.
+        Du hjelper klienten med å fylle ut sjekklisten.
+        Du har fått sjekklisten og samtalehistorikken og brukerens siste melding.
+        Klienten kan også ha lastet opp dokumenter som kan være nyttige for å fylle ut sjekklisten. Hvis de har gjort det, vil de bli gitt til deg.
+        Dette settet med dokumenter kan eller kan ikke være tilstrekkelig for å fylle ut sjekklisten.
+        Men det er alltid bra å ha flere detaljer uavhengig av dokumentene.
+        Du vil svare brukeren på en slik måte at samtalen fører til at sjekklisten blir fylt ut.
+        Du vil bare svare med svaret til brukeren, legg ikke til annen informasjon.
+        Svaret ditt skal være i samsvar med samtalehistorikken og sjekklisten.
         ###
-        Checklist:
+        Sjekkliste:
         {checklist_content}
 
-        Supporting Documents:
+        Støttende Dokumenter:
         {client_docs}
         
-        
-        conversation history:
+        samtalehistorikk:
         {st.session_state["messages"]}
-        user's latest message:
+        brukerens siste melding:
         {prompt}
         ###
-        Your reply should be a assertion / command / comment / statement followed by a question, or simply a question that will carry the conversation forward.
-        You must also explain the significance of the question and how much checklist has been filled in approx %.
-        You will only respond with the reply to the user, add no other information.
+        Svaret ditt skal være en påstand / kommando / kommentar / uttalelse etterfulgt av et spørsmål, eller bare et spørsmål som vil føre samtalen videre.
+        Du må også forklare betydningen av spørsmålet og hvor mye av sjekklisten som er fylt ut i prosent.
+        Du vil bare svare med svaret til brukeren, legg ikke til annen informasjon.
         """
     completion = client.chat.completions.create(
         model="gpt-4o",
         messages=[
             {
                 "role": "user",
-                "content": "You are a polite and helpful data entry clerk.",
+                "content": "Du er en høflig og hjelpsom dataregistreringsmedarbeider.",
             },
             {"role": "user", "content": prompty},
         ],
@@ -155,46 +148,44 @@ if prompt := st.chat_input("Hi, lets start solving!"):
     st.session_state.messages.append({"role": "ai", "content": response})
     st.rerun()
 
-
 with st.sidebar:
     st.divider()
-    if st.button("Submit for Audit"):
+    if st.button("Send inn for Revisjon"):
         submi_prompt = f"""
-        You have been provided with a checklist and a conversation between an agent and the user who had to fill the checklist.
-        You will use the conversation history and the checklist to fill the checklist.
-        You will be accurate in filling the checklist.
-        You will not fill the checklist with any information that is not present in the conversation history.
-        You will return a text response with the filled checklist.
-        You will keep the text of the checklist same as the original checklist.
-        You will also return comments about user's conversation with respect to the filling experience.
-        Here is the conversation history and the checklist.
+        Du har fått en sjekkliste og en samtale mellom en agent og brukeren som måtte fylle ut sjekklisten.
+        Du vil bruke samtalehistorikken og sjekklisten for å fylle ut sjekklisten.
+        Du vil være nøyaktig når du fyller ut sjekklisten.
+        Du vil ikke fylle ut sjekklisten med informasjon som ikke finnes i samtalehistorikken.
+        Du vil returnere et tekstsvar med den utfylte sjekklisten.
+        Du vil holde teksten til sjekklisten den samme som den originale sjekklisten.
+        Du vil også returnere kommentarer om brukerens samtale med hensyn til utfyllingsopplevelsen.
+        Her er samtalehistorikken og sjekklisten.
         ###
-        Checklist:
+        Sjekkliste:
         {selected_content}
         
-        conversation history:
+        samtalehistorikk:
         {st.session_state["messages"]}
         ###
         
-        Your resoponse must be in following format:
+        Svaret ditt må være i følgende format:
         ***
-        Checklist:
-        Item 1:
-        Response 1:
-        Item 2:
-        Response 2:
-        .... so on
+        Sjekkliste:
+        Punkt 1:
+        Svar 1:
+        Punkt 2:
+        Svar 2:
+        .... så videre
         
-        Comments:
-        [Your comments here.]
+        Kommentarer:
+        [Dine kommentarer her.]
         ***
-            
         """
         client = OpenAI(api_key=st.secrets["openai_api_key"])
         completion = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "user", "content": "You are a survey analyst and reporter."},
+                {"role": "user", "content": "Du er en undersøkelsesanalytiker og reporter."},
                 {"role": "user", "content": submi_prompt},
             ],
         )
